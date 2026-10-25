@@ -27,7 +27,7 @@ backend/app/config.py       Delivery month and the 09:50 gate
 backend/app/elexon.py       FUELHH and WINDFOR client, with retry on 429
 backend/app/ingest.py       Day-by-day pull. Run as python -m app.ingest
 backend/app/analysis.py     Pre-gate selection, bias, MAE, RMSE, energy
-backend/app/store.py        Loads the snapshot once
+backend/app/store.py        Loads the snapshot and reads it again when the file changes
 backend/app/main.py         /api/health /api/meta /api/days /api/days/{date} /api/accuracy
 backend/tests/              Gate, scoring, and API tests
 frontend/src/pages/         Decision desk and accuracy screens
@@ -80,18 +80,9 @@ python -m pytest
 
 ## Hosted application
 
-The image that gets hosted is the root `Dockerfile`. FastAPI serves `/api` and the built React app, and it listens on `$PORT`.
+The public site is one Google Cloud Run service, built from [github.com/Aayush919/wind-forecast-dashboard](https://github.com/Aayush919/wind-forecast-dashboard) on `main`. Cloud Build uses the root `Dockerfile`. That image builds the React desk and serves it from the same process as the API, so `/review`, `/accuracy`, and `/api` are one URL.
 
-This machine is not logged in to Heroku, so there is no public URL yet. After `brew install heroku` and `heroku login`, from the repository root:
-
-```bash
-heroku create w4n8kq2m
-heroku stack:set container --app w4n8kq2m
-heroku container:push web --app w4n8kq2m
-heroku container:release web --app w4n8kq2m
-```
-
-The app is then at `https://w4n8kq2m.herokuapp.com`. If that name is taken, run `heroku create` with no name and put the printed URL here.
+No `.env` file is required. Cloud Run sets `PORT`. The image sets `DATA_FILE` to the January snapshot and `STATIC_DIR` to the built screens. A push to `main` rebuilds the service. The live address is the `https://….run.app` URL Cloud Run shows for this service.
 
 ## Tools
 
