@@ -13,6 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.analysis import public_summary
+from app.security import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.store import SnapshotInvalid, SnapshotMissing, default_data_path, load_report
 
 
@@ -29,8 +30,24 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Day-ahead wind", lifespan=lifespan)
+# The hosted image serves the screens from this process, so the browser and the
+# API share one origin and do not need a cross-origin allow-list. Interactive
+# docs stay on for local API work and stay off once that image is running.
+_hosted = bool(os.environ.get("STATIC_DIR"))
+_extra_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+app = FastAPI(
+    title="Day-ahead wind",
+    lifespan=lifespan,
+    docs_url=None if _hosted else "/docs",
+    redoc_url=None if _hosted else "/redoc",
+    openapi_url=None if _hosted else "/openapi.json",
+)
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -38,10 +55,13 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        *_extra_origins,
     ],
     allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_headers=["Accept"],
+    allow_credentials=False,
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(SnapshotMissing)

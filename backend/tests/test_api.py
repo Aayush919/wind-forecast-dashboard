@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import store
+from app import security, store
 from app.main import app
 
 
@@ -53,8 +53,12 @@ def client(tmp_path, monkeypatch):
     path.write_text(json.dumps(snapshot))
     monkeypatch.setenv("DATA_FILE", str(path))
     store.reset()
+    security.reset()
+    security.LIMIT = 120
     with TestClient(app) as test_client:
         yield test_client
+    security.reset()
+    security.LIMIT = 120
     store.reset()
 
 
@@ -112,3 +116,35 @@ def test_health_meta_days_and_accuracy(client):
 def test_bad_dates(client):
     assert client.get("/api/days/15-01-2026").status_code == 400
     assert client.get("/api/days/2026-02-01").status_code == 404
+
+
+def test_browser_from_another_site_is_not_allowed(client):
+    allowed = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
+    blocked = client.get("/api/health", headers={"Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in blocked.headers
+
+
+def test_responses_carry_security_headers(client):
+    response = client.get("/api/health")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_a_tight_loop_is_rejected(client):
+    security.reset()
+    security.LIMIT = 2
+    try:
+        assert client.get("/api/meta").status_code == 200
+        assert client.get("/api/meta").status_code == 200
+        blocked = client.get("/api/meta")
+        assert blocked.status_code == 429
+        assert blocked.json()["detail"] == "Too many requests"
+        assert blocked.headers["retry-after"] == "60"
+        assert client.get("/api/health").status_code == 200
+    finally:
+        security.LIMIT = 120
+        security.reset()

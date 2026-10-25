@@ -14,7 +14,8 @@ COPY data /app/data
 COPY --from=webbuild /src/dist /app/frontend/dist
 ENV DATA_FILE=/app/data/january_2026.json
 ENV STATIC_DIR=/app/frontend/dist
+ENV TRUST_PROXY=1
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app/backend
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*' --no-server-header"]
